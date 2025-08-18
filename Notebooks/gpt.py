@@ -120,7 +120,7 @@ class LayerNorm(nn.Module):
         mean = x.mean(dim=-1, keepdim = True)
         var = x.var(dim =-1, keepdim = True, unbiased =False)
         norm_x = (x-mean)/torch.sqrt(var+self.eps)
-        return norm_x
+        return self.scale * norm_x + self.shift
     
 
 class GELU(nn.Module):
@@ -151,7 +151,7 @@ class FeedForward(nn.Module):
         return self.layers(x)
     
 
-class TransfomerBlock(nn.Module):
+class TransformerBlock(nn.Module):
 
     def __init__(self, cfg):
         super().__init__()
@@ -175,7 +175,7 @@ class TransfomerBlock(nn.Module):
         shortcut = x
         x = self.norm1(x)
         x = self.att(x)
-        self.drop_shortcut(x)
+        x = self.drop_shortcut(x)
         x = x + shortcut
 
         shortcut = x
@@ -196,7 +196,7 @@ class GPT(nn.Module):
         self.drop_emb = nn.Dropout(cfg['drop_rate'])
 
         self.trf_blocks = nn.Sequential(
-            *[TransfomerBlock(cfg) for _ in range(cfg['n_layers'])]
+            *[TransformerBlock(cfg) for _ in range(cfg['n_layers'])]
         )
 
         self.final_norm = LayerNorm(cfg['emb_dim'])
@@ -218,9 +218,9 @@ class GPT(nn.Module):
         return logits
 
 def text_to_token_ids(text, tokenizer):
-    encoded = tokenizer.encode(text, allowed_special = {'<|endoftext|>'})
-    encoded_tesor = torch.tensor(encoded).unsqueeze(0)
-    return encoded_tesor
+    encoded = tokenizer.encode(text, allowed_special={'<|endoftext|>'})
+    encoded_tensor = torch.tensor(encoded).unsqueeze(0)
+    return encoded_tensor
 
 def token_ids_to_text(token_ids, tokenizer):
     flat = token_ids.squeeze(0)
@@ -329,11 +329,11 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
     return idx
 
 
-def generate(model, idx, max_new_tokens, context_size, temperature = 0.0, top_k = None, eos_id =None):
+def generate(model, idx, max_new_tokens, context_size, temperature = 0.0, top_k = None, eos_id =50256):
     for _ in range(max_new_tokens):
 
         idx_cond = idx[:, -context_size:]
-        model.eval()
+        # model.eval()
         with torch.no_grad():
             logits = model(idx_cond)
 
@@ -356,6 +356,9 @@ def generate(model, idx, max_new_tokens, context_size, temperature = 0.0, top_k 
 
         else:
             idx_next = torch.argmax(logits, dim =-1, keepdim=True)
+
+        if idx_next == eos_id:
+            break
 
         idx = torch.cat((idx, idx_next), dim = 1)
 
